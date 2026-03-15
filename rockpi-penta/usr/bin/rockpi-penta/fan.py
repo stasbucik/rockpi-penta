@@ -77,7 +77,7 @@ class Gpio:
 def read_temp():
     import subprocess
     temps = []
-    for dev in ['/dev/sda', '/dev/sdb']:
+    for dev in ['/dev/sda', '/dev/sdb', '/dev/sdc', '/dev/sdd']:
         try:
             out = subprocess.check_output(
                 ['smartctl', '-A', dev], text=True
