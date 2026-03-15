@@ -45,18 +45,23 @@ class Pwm:
             f.write(f"{int(self.period_value * duty)}")
 
 
+# Patched for gpiod v2 API (required on Raspberry Pi 5 / Debian Trixie)
 class Gpio:
-
     def tr(self):
         while True:
-            self.line.set_value(1)
+            self.request.set_value(self.line_num, gpiod.line.Value.ACTIVE)
             time.sleep(self.value[0])
-            self.line.set_value(0)
+            self.request.set_value(self.line_num, gpiod.line.Value.INACTIVE)
             time.sleep(self.value[1])
 
     def __init__(self, period_s):
-        self.line = gpiod.Chip(os.environ['FAN_CHIP']).get_line(int(os.environ['FAN_LINE']))
-        self.line.request(consumer='fan', type=gpiod.LINE_REQ_DIR_OUT)
+        self.line_num = int(os.environ['FAN_LINE'])
+        chip_path = f"/dev/gpiochip{os.environ['FAN_CHIP']}"
+        self.request = gpiod.request_lines(
+            chip_path,
+            consumer='fan',
+            config={self.line_num: gpiod.LineSettings(direction=gpiod.line.Direction.OUTPUT)}
+        )
         self.value = [period_s / 2, period_s / 2]
         self.period_s = period_s
         self.thread = threading.Thread(target=self.tr, daemon=True)
@@ -67,10 +72,26 @@ class Gpio:
         self.value[0] = self.period_s - self.value[1]
 
 
+# Patched to read SSD temperatures via smartctl instead of CPU temp.
+# Falls back to CPU temp if smartctl fails or no drives are found.
 def read_temp():
+    import subprocess
+    temps = []
+    for dev in ['/dev/sda', '/dev/sdb']:
+        try:
+            out = subprocess.check_output(
+                ['smartctl', '-A', dev], text=True
+            )
+            for line in out.splitlines():
+                if 'Temperature_Celsius' in line:
+                    temps.append(int(line.split()[-1]))
+        except Exception:
+            pass
+    if temps:
+        return max(temps)
+    # fallback to CPU temp
     with open('/sys/class/thermal/thermal_zone0/temp') as f:
-        t = int(f.read().strip()) / 1000.0
-    return t
+        return int(f.read().strip()) / 1000.0
 
 
 def get_dc(cache={}):
