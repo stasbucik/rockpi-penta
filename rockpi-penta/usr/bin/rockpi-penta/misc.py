@@ -51,6 +51,8 @@ def get_cpu_temp():
 def read_conf():
     conf = defaultdict(dict)
 
+    conf['disk'] = ['md0']
+
     try:
         cfg = ConfigParser()
         cfg.read('/etc/rockpi-penta.conf')
